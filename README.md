@@ -1,15 +1,23 @@
-# hw-heltecv4 — Heltec WiFi LoRa 32 (V4) board HAL
+# hw-heltecv4-r2 — Heltec WiFi LoRa 32 V4 (R2) board HAL
 
-**hw-heltecv4** is the board-support straddle for the **Heltec WiFi LoRa 32
-(V4)** — an ESP32-S3R2 (16 MB flash, 2 MB **quad** PSRAM) carrying one Semtech
-**SX1262** LoRa modem on its own SPI bus, behind a Vext-gated peripheral power
-rail. It makes the board usable by an application: it owns the Vext rail
-bring-up and the LoRa chip-select park, and it publishes the board's pin map and hardware
-tuning as Kconfig. Board reference: <https://heltec.org/project/wifi-lora-32-v4/>.
+**hw-heltecv4-r2** is the board-support straddle for the **Heltec WiFi LoRa 32
+(V4)** built on the **ESP32-S3R2** module (16 MB flash, 2 MB **quad** PSRAM),
+carrying one Semtech **SX1262** LoRa modem on its own SPI bus, behind a
+Vext-gated peripheral power rail. It makes the board usable by an application:
+it owns the Vext rail bring-up and the LoRa chip-select park, and it publishes
+the board's pin map and hardware tuning as Kconfig. Board reference:
+<https://heltec.org/project/wifi-lora-32-v4/>.
+
+Heltec also ships the V4 with the **ESP32-S3R8** module (8 MB **octal** PSRAM).
+That board is [hw-heltecv4-r8](../hw-heltecv4-r8), not this one: the PSRAM mode
+is fixed at build time, so an R2 image aborts at boot on an R8 with
+`quad_psram: PSRAM chip is not connected, or wrong PSRAM line mode`, and the R8
+moves Vext to a different pin. The module's marking says which you have, and so
+does `esptool.py chip_id` ("Embedded PSRAM 2MB" here, 8MB on the R8).
 
 It is a **non-buildable** component — it decides nothing about what the device
 *does*. A buildable assembler (`reticulous/reticulous`) adds it and inherits the
-board: `spangap build reticulous/reticulous --with spangap/hw-heltecv4`. The
+board: `spangap build reticulous/reticulous --with spangap/hw-heltecv4-r2`. The
 mesh stack, the IP/web platform, `app_main`, the partition layout, the update
 story and the browser SPA all come from the buildable and its other straddles —
 not from here.
@@ -24,27 +32,27 @@ header peripherals remain unwired.
 ## Origins
 
 The board is Heltec's WiFi LoRa 32 (V4). Pin assignments follow the published V4
-pin map. The earlier V3 is a different module (ESP32-S3 without the R2 PSRAM
-package) and is **not** this straddle; confirm pins against your board revision
-before trusting RF results.
+pin map. The earlier V3 is a different module (ESP32-S3 without PSRAM) and is
+**not** this straddle; confirm pins against your board revision before trusting
+RF results.
 
 ## What it does, and how it fits
 
-The board contributes one hook that the buildable's generated init dispatcher
-calls. There is nothing to call by hand: if the straddle is in the build, the
-board comes up automatically.
+The board contributes one registered service, `Heltecv4R2Board`, which the
+buildable's generated `app_main` constructs and walks. There is nothing to call
+by hand: if the straddle is in the build, the board comes up automatically.
 
-| Hook | Band | Present when | Brings up |
-|---|---|---|---|
-| `heltecv4Start` | start | always | Vext peripheral power rail ON, LoRa chip-select park HIGH |
+| Service hook | Band | Brings up |
+|---|---|---|
+| `Heltecv4R2Board::onStart` | start | Vext peripheral power rail ON, LoRa chip-select park HIGH |
 
-`heltecv4Start` runs in the `start:` band, **before** `spangapInit()`. It is
+`onStart` runs in the start band, **before** `spangapInit()`. It is
 bare-hardware bring-up: it drives the Vext rail on so the OLED (and any other
 rail-powered peripheral) is live before tinylcd's task initialises the panel,
 and parks the SX1262's CS line HIGH so the radio does not drive MISO before
 `loraInit()` (in [iface-lora](../iface-lora)) claims the pin. There is no
-`init:`-band companion — the OLED UI is [tinylcd](../tinylcd)'s own service,
-not a board hook.
+`onInit` companion — the OLED UI is [tinylcd](../tinylcd)'s own service, not a
+board hook.
 
 Unlike the T-Deck, the SX1262 sits on its **own** SPI bus (separate from the
 flash bus) and is powered directly rather than off Vext, so there is no
@@ -60,22 +68,24 @@ straddles form is assembled by the buildable's `straddle.yaml`, not here.
 ## Board identity (`detect_hw`)
 
 `esp-idf/src/detect.cpp` answers one question about this board: it returns
-`"hw-heltecv4"` when the hardware under the firmware is this board, and NULL when
-it is not. What it asks:
+`"hw-heltecv4-r2"` when the hardware under the firmware is this board, and NULL
+when it is not. What it asks:
 
-16 MB flash, then the SSD1306 OLED acking on 17/18 (at 0x3C or 0x3D, whichever
-the strap picked) with Vext powered and the panel pulsed out of reset, confirmed
-by the SX1262 on the LoRa header. Vext and the OLED reset are released **only**
-when the probe fails: on the board this actually is, the firmware wants them
-exactly as the probe left them.
+16 MB flash and 2 MB of embedded PSRAM per the eFuses — which rules out the R8
+before a pin is touched, and must, since GPIO 36 (Vext here) is an octal-PSRAM
+data line there — then the SSD1306 OLED acking on 17/18 (at 0x3C or 0x3D,
+whichever the strap picked) with Vext powered and the panel pulsed out of reset,
+confirmed by the SX1262 on the LoRa header. Vext and the OLED reset are released
+**only** when the probe fails: on the board this actually is, the firmware wants
+them exactly as the probe left them.
 
 spangap-core calls it before the first `onStart()` — the last moment no bus is
 claimed — and **halts the device awake** when the answer disagrees with the board
 this image was built for, since every pin map here would then belong to someone
 else's hardware. The confirmed answer is published as `sys.hw` and announced on
-the console as `build: hw hw-heltecv4`. flashmon's standalone detector carries a
-hand-kept copy of the same function, renamed `detect_hw_heltecv4`, to identify a chip
-whose firmware is unknown; change one, change the other. See
+the console as `build: hw hw-heltecv4-r2`. flashmon's standalone detector carries
+a hand-kept copy of the same function, renamed `detect_hw_heltecv4_r2`, to
+identify a chip whose firmware is unknown; change one, change the other. See
 [spangap-core/docs/init.md](../spangap-core/docs/init.md) and
 [flashmon/docs/detect.md](../flashmon/docs/detect.md).
 
@@ -126,7 +136,7 @@ LoRa settings, which appears only when that part was detected — at the cost of
 ~20 dB of gain ahead of the chip. A solar node may prefer that trade. A GC1109
 board (≤ V4.2) has no such path; its LNA is always in line.
 
-### Board-owned pin (in this straddle's `heltecv4.h`)
+### Board-owned pin (in this straddle's `heltecv4r2.h`)
 
 | Signal | GPIO | Notes |
 |---|---|---|
@@ -180,3 +190,4 @@ This board defines no storage keys of its own. Runtime LoRa parameters live at
 
 - [INTERNALS.md](INTERNALS.md) — the Vext / chip-select-park bring-up, the start-band
   ordering rule, and the board pitfalls.
+- [hw-heltecv4-r8](../hw-heltecv4-r8) — the same board on the S3R8 module.

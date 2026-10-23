@@ -1,18 +1,18 @@
 /**
- * heltecv4.cpp — Heltec WiFi LoRa 32 (V4) board support, end to end.
+ * heltecv4r2.cpp — Heltec WiFi LoRa 32 V4 (R2) board support, end to end.
  *
- * Single owner of all V4 hardware bring-up. See heltecv4.h for the API contract
+ * Single owner of all V4 R2 hardware bring-up. See heltecv4r2.h for the API contract
  * and the board reference: https://heltec.org/project/wifi-lora-32-v4/. Layout:
  *
  *   1. Vext peripheral power rail + LoRa CS park.
- *      Always compiled. Driven from heltecv4Start() before spangapInit().
+ *      Always compiled. Driven from Heltecv4R2Board::onStart() before spangapInit().
  *
  * The SX1262 lives on its own SPI bus (separate from the flash) and is powered
  * directly, not off Vext — so unlike the T-Deck there is no shared-bus SD probe
  * to race. We still park the radio's CS HIGH before loraInit() owns it, and
  * bring Vext up so any rail-powered peripheral added later is live at boot.
  */
-#include "heltecv4.h"
+#include "heltecv4r2.h"
 
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
@@ -22,7 +22,7 @@
  * 1. Vext peripheral power rail + LoRa CS park
  * ========================================================================= */
 
-static void heltecv4PowerInit(void)
+static void heltecv4r2PowerInit(void)
 {
 #if BOARD_VEXT_CTRL_PIN >= 0
     gpio_config_t vext = {};
@@ -57,9 +57,9 @@ static void heltecv4PowerInit(void)
 }
 
 /* =========================================================================
- * Public API — the always-on board bring-up (see heltecv4.h).
+ * Public API — the always-on board bring-up (see heltecv4r2.h).
  * ========================================================================= */
 
-void Heltecv4Board::onStart() {
-    heltecv4PowerInit();   /* Vext rail + LoRa CS park */
+void Heltecv4R2Board::onStart() {
+    heltecv4r2PowerInit();   /* Vext rail + LoRa CS park */
 }
